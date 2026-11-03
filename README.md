@@ -49,3 +49,37 @@ API、后台、用户路径，带 Cookie、Authorization、Range、条件请求�
 ## HTTPS 与自动续期
 参阅 [HTTPS 部署教程](docs/https-deployment.md)，包括域名解析、从原容器迁移、Caddy 自动续期、缓存策略和故障排查。
 仓库提供 compose.https.yaml、Caddyfile 与 .env.https.example。HTTP 和 HTTPS 两套 Compose 配置应独立使用。
+
+## 自定义不缓存路径
+无需修改 Go 代码。在 .env 中设置：
+
+```dotenv
+CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/private
+```
+
+规则用英文逗号分隔，只填写路径，不填写域名、查询参数。
+/private 匹配该路径及 /private/ 下所有子路径，不匹配 /private-other。
+也接受 /private/*、尾部斜杠和两侧空格。大小写不敏感。
+匹配的是转发到源站的规范化 URL 路径；UPSTREAM 若包含 /base 前缀，应填写 /base/private。
+设置 CACHE_BYPASS_PATHS=/ 可关闭全部缓存。留空仍保留内置排除规则。
+自定义配置追加到内置 /api、/admin、/user、/wp-admin、/wp-login.php 排除规则，不能用来解除这些规则。
+Cookie、Authorization、非 GET 请求和源站 private/no-store/no-cache 等限制仍然有效。
+配置格式错误会在启动时报错，避免悄悄忽略排除规则。
+
+首次升级程序：
+
+```bash
+git pull
+docker compose -f compose.https.yaml up -d --build
+```
+
+之后只修改 .env 时，执行下面命令即可，无需重新构建：
+
+```bash
+docker compose -f compose.https.yaml up -d
+```
+
+普通 HTTP Compose 用 docker compose up -d。
+不要仅使用 docker restart：它不会读取新的 .env。应用配置会重建代理容器并清空其内存缓存。
+docker run 用户在创建容器时添加 -e "CACHE_BYPASS_PATHS=/auth,/payment,/res"，修改时需重建容器。
+响应头 X-Proxy-Cache: BYPASS 可用于确认请求已绕过本代理缓存。

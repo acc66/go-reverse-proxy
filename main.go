@@ -19,15 +19,21 @@ func proxyHandler(raw string) (http.Handler, error) {
 	if err != nil || target.Hostname() == "" || (target.Scheme != "http" && target.Scheme != "https") || target.User != nil || target.Fragment != "" {
 		return nil, errors.New("UPSTREAM must be an http(s) URL without credentials or fragment")
 	}
+	excludedPaths, err := parseExcludedPaths(os.Getenv("CACHE_BYPASS_PATHS"))
+	if err != nil {
+		return nil, err
+	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = 30 * time.Second
+	cache := newAssetCache(transport)
+	cache.excludedPaths = excludedPaths
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(target)
 			r.Out.Host = target.Host
 			r.SetXForwarded()
 		},
-		Transport: newAssetCache(transport),
+		Transport: cache,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.Printf("upstream request failed: %v", err)
 			http.Error(w, "Bad Gateway", http.StatusBadGateway)

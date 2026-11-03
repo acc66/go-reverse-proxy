@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"path"
@@ -18,18 +19,19 @@ type cachedAsset struct {
 	ttl    time.Duration
 }
 type assetCache struct {
-	base      http.RoundTripper
-	mu        sync.Mutex
-	entries   map[string]cachedAsset
-	used      int
-	limit     int
-	maxObject int
+	base          http.RoundTripper
+	mu            sync.Mutex
+	entries       map[string]cachedAsset
+	used          int
+	limit         int
+	maxObject     int
+	excludedPaths []string
 }
 
 func newAssetCache(base http.RoundTripper) *assetCache {
 	return &assetCache{base: base, entries: make(map[string]cachedAsset), limit: 64 << 20, maxObject: 2 << 20}
 }
-func staticRequest(r *http.Request) bool {
+func staticRequest(r *http.Request, excludedPaths ...string) bool {
 	if r.Method != "GET" || r.Header.Get("Cookie") != "" || r.Header.Get("Authorization") != "" || r.Header.Get("Range") != "" || r.Header.Get("Cache-Control") != "" || r.Header.Get("Pragma") != "" || r.Header.Get("Upgrade") != "" {
 		return false
 	}
@@ -39,8 +41,8 @@ func staticRequest(r *http.Request) bool {
 		}
 	}
 	p := strings.ToLower(path.Clean("/" + r.URL.Path))
-	for _, prefix := range []string{"/api", "/admin", "/user", "/wp-admin", "/wp-login.php"} {
-		if p == prefix || strings.HasPrefix(p, prefix+"/") {
+	for _, prefix := range append([]string{"/api", "/admin", "/user", "/wp-admin", "/wp-login.php"}, excludedPaths...) {
+		if prefix == "/" || p == prefix || strings.HasPrefix(p, prefix+"/") {
 			return false
 		}
 	}
@@ -104,7 +106,7 @@ type joinedBody struct {
 }
 
 func (c *assetCache) RoundTrip(r *http.Request) (*http.Response, error) {
-	eligible := staticRequest(r)
+	eligible := staticRequest(r, c.excludedPaths...)
 	key := r.URL.String() + "\n" + r.Host + "\n" + r.Header.Get("Accept-Encoding")
 	if eligible {
 		c.mu.Lock()
@@ -189,4 +191,29 @@ func assetSize(key string, item cachedAsset) int {
 		}
 	}
 	return size
+}
+
+// parseExcludedPaths accepts comma-separated paths; built-in exclusions remain active.
+func parseExcludedPaths(raw string) ([]string, error) {
+	var result []string
+	seen := make(map[string]bool)
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		item = strings.TrimSuffix(item, "/*")
+		if item == "" {
+			item = "/"
+		}
+		if !strings.HasPrefix(item, "/") || strings.ContainsAny(item, "*?#%\\") || strings.ContainsAny(item, "\r\n\t") {
+			return nil, fmt.Errorf("invalid CACHE_BYPASS_PATHS entry %q: use /path or /path/* without domain or query", item)
+		}
+		item = strings.ToLower(path.Clean(item))
+		if !seen[item] {
+			result = append(result, item)
+			seen[item] = true
+		}
+	}
+	return result, nil
 }

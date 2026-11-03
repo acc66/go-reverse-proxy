@@ -162,3 +162,18 @@ HTTPS 传输仍正常，但依赖原始访客 IP 或外部协议判断的应用�
 - https://hub.docker.com/_/caddy
 
 本教程配置尚未在本机 Docker 环境实际运行验证。
+
+## 自定义不缓存路径
+
+在 .env 中增加或修改：
+
+```dotenv
+CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/private
+```
+
+路径用英文逗号分隔，不写域名。/private 覆盖自身和子路径，也可以写 /private/*。
+规则会追加到内置排除列表；设置 / 可关闭全部缓存。匹配源站路径，UPSTREAM 的路径前缀也应包含在规则内。
+完整规则说明见 [README](../README.md#自定义不缓存路径)。
+
+首次获取此功能需 git pull 并执行 docker compose -f compose.https.yaml up -d --build。
+之后修改 .env，执行 docker compose -f compose.https.yaml up -d 即可；仅 restart 不会载入新环境变量。

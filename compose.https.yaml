@@ -3,6 +3,7 @@ services:
     build: .
     environment:
       UPSTREAM: ${UPSTREAM:?Set UPSTREAM in .env}
+      CACHE_BYPASS_PATHS: "${CACHE_BYPASS_PATHS:-}"
     restart: unless-stopped
     read_only: true
     cap_drop:
