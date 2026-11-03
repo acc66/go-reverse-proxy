@@ -50,7 +50,7 @@ cmp "$APP_DIR/fango" "$work/source/go-reverse-proxy"
 [[ $DEFAULT_BYPASS == /auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user ]]
 need_root() { :; }
 printf 'wrong\n1\n4\n0\n' | menu > "$work/menu-output"
-grep -q '请输入 0 到 11' "$work/menu-output"
+grep -q '请输入 0 到 14' "$work/menu-output"
 echo "Manager tests passed: checksum, safe extraction, rollback, upgrade, menu, default bypass."
 
 # Existing settings survive upstream replacement; duplicates are removed.

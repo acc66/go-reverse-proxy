@@ -32,6 +32,7 @@ jobs:
         run: |
           for script in scripts/fango scripts/install.sh scripts/test-manager.sh; do bash -n "$script"; done
           bash scripts/test-manager.sh
+          python3 scripts/test_sites.py
       - name: Install and restart real systemd service using offline package
         run: |
           mkdir -p /tmp/proxy-package

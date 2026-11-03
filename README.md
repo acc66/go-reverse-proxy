@@ -100,3 +100,5 @@ docker run 用户在创建容器时添加 -e "CACHE_BYPASS_PATHS=/auth,/payment,
 [一键安装及数字菜单教程](docs/manager.md)：Debian/Ubuntu 原生安装、开机启动、输入数字查看日志/重启/改配置/在线升级，支持离线包校验和失败回滚。安装后运行 fango。
 
 默认后台进程与 systemd 服务为 fango。支持 fango set-upstream https://api10.seox9.com/ 更新已有回源，fango uninstall 卸载；详见管理教程。
+## 在线多域名
+支持 fango domain-add、domain-list、domain-remove：多个域名共用回源、独立回源及在线切换，详见 [多域名教程](docs/domains.md)。

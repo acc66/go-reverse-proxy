@@ -114,6 +114,12 @@ legacy_restart=false
 if [[ $(systemctl show go-reverse-proxy --property=LoadState --value) != not-found ]]; then
  systemctl disable go-reverse-proxy
 fi
+if [[ -f "$HERE/fango-sites.py" ]]; then
+ install -m 644 "$HERE/fango-sites.py" /opt/fango/fango-sites.py
+else
+ fetch "https://raw.githubusercontent.com/acc66/go-reverse-proxy/main/scripts/fango-sites.py" "$work/fango-sites.py"
+ install -m 644 "$work/fango-sites.py" /opt/fango/fango-sites.py
+fi
 install -m 755 "$HERE/fango" /usr/local/bin/fango
 if [[ ! -e /usr/local/bin/proxyctl ]] || grep -q '^SERVICE=go-reverse-proxy$' /usr/local/bin/proxyctl; then
  ln -sfn /usr/local/bin/fango /usr/local/bin/proxyctl

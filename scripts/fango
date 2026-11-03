@@ -67,7 +67,7 @@ deploy_binary() {
  install -m 755 "$source/go-reverse-proxy" "$APP_DIR/fango.new" || return 1
  mv -f "$APP_DIR/fango.new" "$APP_DIR/fango" || return 1
  if [[ $restart == true ]]; then
-  if systemctl restart "$SERVICE" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
+  if systemctl restart "$SERVICE" && systemctl try-restart "fango-site-*.service" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
    :
   else
    echo "服务启动检查失败，正在回滚。" >&2
@@ -115,7 +115,7 @@ edit_config() {
  backup=$(mktemp)
  cp "$ENV_FILE" "$backup"
  if ! nano "$ENV_FILE"; then rm -f "$backup"; return 1; fi
- if systemctl restart "$SERVICE" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
+ if systemctl restart "$SERVICE" && systemctl try-restart "fango-site-*.service" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
   rm -f "$backup"; echo "配置已生效。"
  else
   echo "配置应用失败，恢复原配置。"
@@ -156,7 +156,7 @@ apply_upstream() {
  backup=$(mktemp "${ENV_FILE}.backup.XXXXXX") || return 1
  cp -p "$ENV_FILE" "$backup" || return 1
  if ! write_upstream "$1"; then rm -f "$backup"; return 1; fi
- if systemctl restart "$SERVICE" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
+ if systemctl restart "$SERVICE" && systemctl try-restart "fango-site-*.service" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
   echo "回源已更新为 $1；旧配置备份：$backup"
  else
   cp -p "$backup" "$ENV_FILE"
@@ -188,7 +188,15 @@ uninstall_proxy() (
  flock -n 9 || { echo "另一个安装或升级正在运行。"; exit 1; }
  uninstall_files "$purge"
 )
+domain_command() {
+ [[ -f "$APP_DIR/fango-sites.py" ]] || { echo "域名管理组件未安装，请更新安装器。"; return 1; }
+ python3 "$APP_DIR/fango-sites.py" "$@"
+}
 uninstall_files() {
+ if [[ -f /etc/fango/sites.json ]] && ! python3 -c 'import json,sys; sys.exit(0 if not json.load(open("/etc/fango/sites.json")) else 1)'; then
+  echo "仍有托管域名，请先 fango domain-list，再逐个 fango domain-remove 域名，避免遗留运行实例。"
+  return 1
+ fi
  local purge=$1 state executable
  state=$(systemctl show "$SERVICE" --property=LoadState --value) || return 1
  if [[ $state != not-found ]]; then
@@ -204,7 +212,7 @@ uninstall_files() {
  systemctl daemon-reload || return 1
  systemctl reset-failed "$SERVICE" 2>/dev/null || true
  # Remove only known owned files, never recursively delete the directory.
- rm -f -- "$APP_DIR/fango" "$APP_DIR/fango.previous" "$APP_DIR/fango.new" "$APP_DIR/fango.rollback" "$APP_DIR/VERSION" "$MANAGER_FILE" || return 1
+ rm -f -- "$APP_DIR/fango" "$APP_DIR/fango.previous" "$APP_DIR/fango.new" "$APP_DIR/fango.rollback" "$APP_DIR/VERSION" "$APP_DIR/fango-sites.py" "$MANAGER_FILE" || return 1
  rmdir "$APP_DIR" 2>/dev/null || true
  if [[ $purge == true ]]; then rm -f -- "$ENV_FILE" || return 1; fi
  echo "Go 代理已卸载。Caddy 站点仍保留，继续访问可能返回 502；如不再使用，请单独移除对应站点并验证、重载 Caddy。"
@@ -213,7 +221,7 @@ uninstall_files() {
 menu() {
  need_root
  while true; do
-  printf '\nFango 反代管理\n1) 状态/版本\n2) 实时访问与错误日志\n3) 最近错误日志\n4) 重启代理\n5) 启动并设置开机启动\n6) 停止代理\n7) 修改配置并应用\n8) 在线升级最新版\n9) Caddy/证书日志\n10) 修改回源地址\n11) 卸载 Go 代理\n0) 退出\n'
+  printf '\nFango 反代管理\n1) 状态/版本\n2) 实时访问与错误日志\n3) 最近错误日志\n4) 重启代理\n5) 启动并设置开机启动\n6) 停止代理\n7) 修改配置并应用\n8) 在线升级最新版\n9) Caddy/证书日志\n10) 修改回源地址\n11) 卸载 Go 代理\n12) 添加/更新反代域名\n13) 查看托管域名\n14) 删除托管域名\n0) 退出\n'
   local choice
   read -r -p "请输入数字: " choice || break
   case "$choice" in
@@ -228,14 +236,18 @@ menu() {
    9) journalctl -u caddy -n 100 --no-pager || true ;;
    10) local upstream; read -r -p "新回源地址: " upstream; set_upstream "$upstream" || true ;;
    11) if uninstall_proxy; then break; fi ;;
+   12) local domain target; read -r -p "访问域名: " domain; read -r -p "独立回源网址（留空跟随主实例）: " target; if [[ -n $target ]]; then domain_command domain-add "$domain" --upstream "$target" || true; else domain_command domain-add "$domain" || true; fi ;;
+   13) domain_command domain-list || true ;;
+   14) local domain; read -r -p "要移除的托管域名: " domain; domain_command domain-remove "$domain" || true ;;
    0) break ;;
-   *) echo "请输入 0 到 11。" ;;
+   *) echo "请输入 0 到 14。" ;;
   esac
  done
 }
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
  case "${1:-menu}" in
   menu) menu ;;
+  domain-add|domain-list|domain-remove) domain_command "$@" ;;
   set-upstream) shift; set_upstream "$@" ;;
   uninstall) shift; uninstall_proxy "$@" ;;
   offline-upgrade) shift; offline_upgrade "$@" ;;

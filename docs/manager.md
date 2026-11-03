@@ -196,3 +196,5 @@ fango uninstall --yes --purge-config
 --purge-config 仅额外删除 /etc/fango.env，不删除备份或证书。
 卸载后保留的 Caddy 站点可能返回 502。如果不再使用该域名，请单独移除对应站点，验证并重载 Caddy。
 不自动停止或卸载 Caddy，因为同机可能还有其他网站。
+## 在线管理反代域名
+新增菜单 12 添加/更新域名、13 列表、14 删除。支持共用主实例或独立回源；见 [多域名教程](domains.md)。离线安装现在需同时准备 install.sh、fango、fango-sites.py 三个文件。
