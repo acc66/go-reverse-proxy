@@ -177,3 +177,5 @@ CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/private
 
 首次获取此功能需 git pull 并执行 docker compose -f compose.https.yaml up -d --build。
 之后修改 .env，执行 docker compose -f compose.https.yaml up -d 即可；仅 restart 不会载入新环境变量。
+
+逐步操作、docker run 用法与验证步骤见 [自定义不缓存设置教程](cache-settings.md)。

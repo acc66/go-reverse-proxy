@@ -51,6 +51,9 @@ API、后台、用户路径，带 Cookie、Authorization、Range、条件请求�
 仓库提供 compose.https.yaml、Caddyfile 与 .env.https.example。HTTP 和 HTTPS 两套 Compose 配置应独立使用。
 
 ## 自定义不缓存路径
+
+完整操作步骤见 [自定义不缓存设置教程](docs/cache-settings.md)，包含 Compose、docker run、关闭缓存和验证方法。
+
 无需修改 Go 代码。在 .env 中设置：
 
 ```dotenv
