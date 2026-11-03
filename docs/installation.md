@@ -251,3 +251,5 @@ Caddy 配置和证书数据保留。Go 重启后内存缓存会清空。
 
 ## 一键安装与数字菜单
 推荐参阅 [一键安装与管理菜单](manager.md)，支持国内网络离线安装、systemd 进程管理和校验回滚升级。
+
+新版一键安装器默认使用 fango 服务与 /etc/fango.env，日志命令用 journalctl -u fango。本文早期手动安装示例的 go-reverse-proxy 名称仅适用于未迁移的旧部署。迁移、更新回源及卸载请见 [管理教程](manager.md)。

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
-source scripts/proxyctl
+source scripts/fango
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 APP_DIR="$work/app"
@@ -34,21 +34,55 @@ if verify_extract "$work/bad.tar.gz" "$work/bad-sums" bad.tar.gz "$work/no"; the
 fi
 # Test failed start restores old executable; successful restart writes version.
 mkdir -p "$APP_DIR"
-echo original > "$APP_DIR/go-reverse-proxy"
+echo original > "$APP_DIR/fango"
 systemctl() { return 1; }
 sleep() { :; }
 if deploy_binary "$work/source" true; then echo "Failed service accepted"; exit 1; fi
-[[ $(cat "$APP_DIR/go-reverse-proxy") == original ]]
+[[ $(cat "$APP_DIR/fango") == original ]]
 systemctl() { return 0; }
 deploy_binary "$work/source" true
-cmp "$APP_DIR/go-reverse-proxy" "$work/source/go-reverse-proxy"
+cmp "$APP_DIR/fango" "$work/source/go-reverse-proxy"
 [[ $(cat "$APP_DIR/VERSION") == v1.2.0 ]]
 # Failed download leaves installed binary unchanged.
 fetch() { return 1; }
 if download_binary "$work/source" latest amd64; then echo "Failed download accepted"; exit 1; fi
-cmp "$APP_DIR/go-reverse-proxy" "$work/source/go-reverse-proxy"
+cmp "$APP_DIR/fango" "$work/source/go-reverse-proxy"
 [[ $DEFAULT_BYPASS == /auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user ]]
 need_root() { :; }
 printf 'wrong\n1\n4\n0\n' | menu > "$work/menu-output"
-grep -q '请输入 0 到 9' "$work/menu-output"
+grep -q '请输入 0 到 11' "$work/menu-output"
 echo "Manager tests passed: checksum, safe extraction, rollback, upgrade, menu, default bypass."
+
+# Existing settings survive upstream replacement; duplicates are removed.
+ENV_FILE="$work/config.env"
+printf 'UPSTREAM=https://jiangsu.webshost.club/\nLISTEN_ADDR=127.0.0.1:8080\nACCESS_LOG=true\nUPSTREAM=https://old.example/\n' > "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+write_upstream https://api10.seox9.com/
+[[ $(grep -c '^UPSTREAM=' "$ENV_FILE") == 1 ]]
+grep -Fx 'UPSTREAM=https://api10.seox9.com/' "$ENV_FILE"
+grep -Fx 'ACCESS_LOG=true' "$ENV_FILE"
+[[ $(stat -c %a "$ENV_FILE") == 600 ]]
+cp "$ENV_FILE" "$work/expected"
+if write_upstream 'https://bad.example/ bad'; then echo "Bad URL accepted"; exit 1; fi
+cmp "$ENV_FILE" "$work/expected"
+systemctl() { return 1; }
+if apply_upstream https://new.example/; then echo "Bad restart accepted"; exit 1; fi
+cmp "$ENV_FILE" "$work/expected"
+# Uninstall only known files. Keep unrelated data and configuration by default.
+UNIT_FILE="$work/unit.service"
+MANAGER_FILE="$work/fango"
+LEGACY_MANAGER_FILE="$work/proxyctl"
+touch "$UNIT_FILE" "$MANAGER_FILE" "$APP_DIR/unrelated.txt"
+systemctl() {
+ case "$*" in
+  *LoadState*) echo loaded ;;
+  *ExecStart*) echo "$APP_DIR/fango" ;;
+ esac
+ return 0
+}
+uninstall_files false
+[[ ! -e "$APP_DIR/fango" && ! -e "$UNIT_FILE" && ! -e "$MANAGER_FILE" ]]
+[[ -f "$ENV_FILE" && -f "$APP_DIR/unrelated.txt" ]]
+uninstall_files true
+[[ ! -e "$ENV_FILE" && -f "$APP_DIR/unrelated.txt" ]]
+echo "Upstream update, rollback and scoped uninstall tests passed."

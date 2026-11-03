@@ -30,7 +30,7 @@ jobs:
           go-version: '1.27.x'
       - name: Syntax and failure-path tests
         run: |
-          bash -n scripts/proxyctl scripts/install.sh scripts/test-manager.sh
+          bash -n scripts/fango scripts/install.sh scripts/test-manager.sh
           bash scripts/test-manager.sh
       - name: Install and restart real systemd service using offline package
         run: |
@@ -40,11 +40,36 @@ jobs:
           cd /tmp
           sha256sum go-reverse-proxy-v1.2.0-linux-amd64.tar.gz > proxy-SHA256SUMS.txt
           cd "$GITHUB_WORKSPACE"
+          sudo mkdir -p /opt/go-reverse-proxy
+          sudo cp /tmp/proxy-package/go-reverse-proxy /opt/go-reverse-proxy/go-reverse-proxy
+          printf 'UPSTREAM=http://127.0.0.1:1
+LISTEN_ADDR=127.0.0.1:8080
+CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user
+ACCESS_LOG=true
+' | sudo tee /etc/go-reverse-proxy.env >/dev/null
+          printf '[Unit]
+Description=Legacy proxy fixture
+[Service]
+EnvironmentFile=/etc/go-reverse-proxy.env
+ExecStart=/opt/go-reverse-proxy/go-reverse-proxy
+[Install]
+WantedBy=multi-user.target
+' | sudo tee /etc/systemd/system/go-reverse-proxy.service >/dev/null
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now go-reverse-proxy
           sudo bash scripts/install.sh --no-https --upstream http://127.0.0.1:1 --version v1.2.0 --archive /tmp/go-reverse-proxy-v1.2.0-linux-amd64.tar.gz --checksums /tmp/proxy-SHA256SUMS.txt
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)" = 502
-          sudo proxyctl offline-upgrade v1.2.0 /tmp/go-reverse-proxy-v1.2.0-linux-amd64.tar.gz /tmp/proxy-SHA256SUMS.txt
-          sudo systemctl is-active --quiet go-reverse-proxy
-          grep -Fx 'CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user' /etc/go-reverse-proxy.env || sudo grep -Fx 'CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user' /etc/go-reverse-proxy.env
+          sudo fango offline-upgrade v1.2.0 /tmp/go-reverse-proxy-v1.2.0-linux-amd64.tar.gz /tmp/proxy-SHA256SUMS.txt
+          sudo systemctl is-active --quiet fango
+          grep -Fx 'CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user' /etc/fango.env || sudo grep -Fx 'CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user' /etc/fango.env
+          ! sudo systemctl is-active --quiet go-reverse-proxy
+          test "$(systemctl is-enabled go-reverse-proxy || true)" = disabled
+          sudo fango set-upstream https://api10.seox9.com/
+          sudo grep -Fx 'UPSTREAM=https://api10.seox9.com/' /etc/fango.env
+          sudo fango uninstall --yes
+          test -f /etc/fango.env
+          test ! -e /opt/fango/fango
+          ! sudo systemctl is-active --quiet fango
       - name: Service logs
         if: always()
-        run: sudo journalctl -u go-reverse-proxy -n 100 --no-pager
+        run: sudo journalctl -u fango -n 100 --no-pager

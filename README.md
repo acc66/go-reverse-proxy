@@ -97,4 +97,6 @@ docker run 用户在创建容器时添加 -e "CACHE_BYPASS_PATHS=/auth,/payment,
 支持 UPSTREAM_CONNECT_TIMEOUT（默认 30s）、UPSTREAM_TLS_TIMEOUT（10s）、UPSTREAM_HEADER_TIMEOUT（30s）以及 ACCESS_LOG（默认 false）。见 [配置与错误日志教程](docs/timeouts-and-logs.md)。Compose 已配置每容器约 3 × 10 MiB 日志轮转。
 
 ## 一键安装与管理菜单
-[一键安装及数字菜单教程](docs/manager.md)：Debian/Ubuntu 原生安装、开机启动、输入数字查看日志/重启/改配置/在线升级，支持离线包校验和失败回滚。安装后运行 proxyctl。
+[一键安装及数字菜单教程](docs/manager.md)：Debian/Ubuntu 原生安装、开机启动、输入数字查看日志/重启/改配置/在线升级，支持离线包校验和失败回滚。安装后运行 fango。
+
+默认后台进程与 systemd 服务为 fango。支持 fango set-upstream https://api10.seox9.com/ 更新已有回源，fango uninstall 卸载；详见管理教程。

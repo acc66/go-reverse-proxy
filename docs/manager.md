@@ -12,7 +12,7 @@
 mkdir -p /root/proxy-installer
 cd /root/proxy-installer
 curl -fL --retry 2 https://raw.githubusercontent.com/acc66/go-reverse-proxy/main/scripts/install.sh -o install.sh &&
-curl -fL --retry 2 https://raw.githubusercontent.com/acc66/go-reverse-proxy/main/scripts/proxyctl -o proxyctl &&
+curl -fL --retry 2 https://raw.githubusercontent.com/acc66/go-reverse-proxy/main/scripts/fango -o fango &&
 bash install.sh   --domain wp.xn--8prw66b70hsx0c.com   --upstream https://api10.seox9.com/
 ```
 
@@ -38,11 +38,11 @@ ACCESS_LOG=true
 
 ## 已有安装
 
-安装器保留 /etc/go-reverse-proxy.env，不覆盖你的回源、缓存和超时设置。
-因此已有配置时 --upstream 不改变源站；安装后用菜单 7 编辑。
-保留已有 systemd 单元；若它执行的程序不在 /opt/go-reverse-proxy/go-reverse-proxy，安装器会提示停止。
+安装器保留已有缓存、监听地址和超时设置；显式指定 --upstream 时会备份配置并更新回源地址。
+不传 --upstream 则保留原回源地址。也可以使用 fango set-upstream https://api10.seox9.com/ 单独更新并重启，启动检查失败自动恢复配置。
+保留已有 systemd 单元；若它执行的程序不在 /opt/fango/fango，安装器会提示停止。
 Caddyfile 若已出现指定域名则保留，不擅自替换网站配置。
-否则创建 /etc/caddy/proxyctl.d/site.caddy 并在 Caddyfile 添加 import；添加前备份主配置。
+否则创建 /etc/caddy/fango.d/site.caddy 并在 Caddyfile 添加 import；添加前备份主配置。
 如已有复杂的 import、通配域名或其他反代，请先人工检查 Caddy 配置，脚本不能识别所有复杂配置。
 不会删除证书数据。已有 LISTEN_ADDR 必须与 Caddy 的 127.0.0.1:8080 回源一致。
 
@@ -51,7 +51,7 @@ Caddyfile 若已出现指定域名则保留，不擅自替换网站配置。
 安装后执行：
 
 ```bash
-proxyctl
+fango
 ```
 
 | 输入 | 操作 |
@@ -65,11 +65,13 @@ proxyctl
 | 7 | nano 编辑配置，应用失败恢复原配置 |
 | 8 | 在线升级到最新稳定发行版 |
 | 9 | Caddy、证书申请和续期日志 |
+| 10 | 修改回源地址并应用 |
+| 11 | 卸载 Go 代理 |
 | 0 | 退出菜单 |
 
-实时查看日志时 Ctrl+C 退出跟踪；不会停止代理。需要时重新运行 proxyctl。
+实时查看日志时 Ctrl+C 退出跟踪；不会停止代理。需要时重新运行 fango。
 菜单 6 只停止 Go，不停止 Caddy；停止后网站可能返回 502。
-配置文件位于 /etc/go-reverse-proxy.env。
+配置文件位于 /etc/fango.env。
 访问日志由 ACCESS_LOG 控制，错误日志始终开启。systemd 日志由系统 journald 策略管理，菜单不擅自改变全机日志保留策略。
 
 已有服务器如需追加指定路径，用菜单 7 把该行设为：
@@ -81,7 +83,7 @@ CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user
 ## 国内网络：离线安装
 
 在能访问 GitHub 的电脑下载：
-1. scripts/install.sh 和 scripts/proxyctl，放在同一目录；
+1. scripts/install.sh 和 scripts/fango，放在同一目录；
 2. Release 中对应的 linux-amd64 或 linux-arm64 tar.gz；
 3. 同一个 Release 的 SHA256SUMS.txt。
 
@@ -101,19 +103,19 @@ bash install.sh   --domain wp.xn--8prw66b70hsx0c.com   --upstream https://api10.
 菜单 8 或：
 
 ```bash
-proxyctl upgrade
+fango upgrade
 ```
 
 指定版本（也可用于明确降级）：
 
 ```bash
-proxyctl upgrade v1.2.0
+fango upgrade v1.2.0
 ```
 
 离线升级：
 
 ```bash
-proxyctl offline-upgrade v1.2.0   /root/proxy-installer/go-reverse-proxy-v1.2.0-linux-amd64.tar.gz   /root/proxy-installer/SHA256SUMS.txt
+fango offline-upgrade v1.2.0   /root/proxy-installer/go-reverse-proxy-v1.2.0-linux-amd64.tar.gz   /root/proxy-installer/SHA256SUMS.txt
 ```
 
 下载或校验失败时不替换当前程序。
@@ -128,11 +130,69 @@ Caddy 通过系统包管理维护，证书由 Caddy 自动续期，不需要通�
 ## 排障
 
 ```bash
-journalctl -u go-reverse-proxy -n 100 --no-pager
+journalctl -u fango -n 100 --no-pager
 journalctl -u caddy -n 100 --no-pager
-systemctl cat go-reverse-proxy
+systemctl cat fango
 curl -sS -D - -o /dev/null --max-time 90 http://127.0.0.1:8080/
 ```
 
 GitHub 连接重置时使用离线安装/升级，不要不断重装 Docker。
 更多：[回源超时与日志](timeouts-and-logs.md) · [缓存规则](cache-settings.md) · [完整安装](installation.md)
+
+## 从旧 go-reverse-proxy 迁移到 fango
+
+默认 systemd 服务名为 fango，后台程序路径为 /opt/fango/fango，管理命令为 fango。
+发行归档仍叫 go-reverse-proxy，安装器会将其中的程序安装为 fango，不需要手动改归档名。
+
+如果 /etc/fango.env 不存在且检测到 /etc/go-reverse-proxy.env，会复制旧配置。
+安装器先停止旧服务，再启动 fango，成功后禁用旧服务开机启动。
+迁移过程中失败会尝试停止 fango 并恢复原来正在运行的旧服务。
+旧服务文件、旧程序和旧配置保留作恢复用途，但不要手动同时启动新旧服务。
+旧的受管理 proxyctl 命令会转换为 fango 的兼容入口。
+Caddy 的 127.0.0.1:8080 回源无需改变。
+
+显式更新已有回源：
+
+```bash
+fango set-upstream https://api10.seox9.com/
+```
+
+查看新服务：
+
+```bash
+systemctl status fango --no-pager
+journalctl -u fango -n 100 --no-pager
+grep '^UPSTREAM=' /etc/fango.env
+```
+
+迁移后编辑 /etc/fango.env，旧 /etc/go-reverse-proxy.env 不再是当前服务配置。
+配置中写 https://，不需要写成 https\://。
+
+## 卸载
+
+菜单输入 11，或执行：
+
+```bash
+fango uninstall
+```
+
+命令会说明范围，输入 UNINSTALL 确认。无需交互时：
+
+```bash
+fango uninstall --yes
+```
+
+默认停止并禁用 fango，删除对应 systemd 单元、已知程序文件和管理命令。
+保留 /etc/fango.env、配置备份、历史系统日志、Caddy、站点配置及证书，避免误删其他网站。
+仅删除本工具明确管理的文件，不递归删除含有其他文件的程序目录。
+旧迁移备份文件和已禁用的 go-reverse-proxy 服务不自动清理。
+
+如需同时删除当前 fango 配置：
+
+```bash
+fango uninstall --yes --purge-config
+```
+
+--purge-config 仅额外删除 /etc/fango.env，不删除备份或证书。
+卸载后保留的 Caddy 站点可能返回 502。如果不再使用该域名，请单独移除对应站点，验证并重载 Caddy。
+不自动停止或卸载 Caddy，因为同机可能还有其他网站。

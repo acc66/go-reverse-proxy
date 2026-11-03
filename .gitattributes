@@ -1,2 +1,2 @@
 *.sh text eol=lf
-scripts/proxyctl text eol=lf
+scripts/fango text eol=lf

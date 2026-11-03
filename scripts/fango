@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+# Linux/systemd manager. Sourceable for installation and tests.
+set -Eeuo pipefail
+SERVICE=fango
+APP_DIR=/opt/fango
+ENV_FILE=/etc/fango.env
+UNIT_FILE=/etc/systemd/system/fango.service
+MANAGER_FILE=/usr/local/bin/fango
+LEGACY_MANAGER_FILE=/usr/local/bin/proxyctl
+REPO=acc66/go-reverse-proxy
+DEFAULT_BYPASS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user
+
+need_root() { [[ $EUID -eq 0 ]] || { echo "请使用 sudo bash $0" >&2; return 1; }; }
+architecture() {
+ case "$(uname -m)" in
+  x86_64) echo amd64 ;;
+  aarch64|arm64) echo arm64 ;;
+  *) echo "仅支持 Linux amd64/arm64" >&2; return 1 ;;
+ esac
+}
+fetch() {
+ curl --fail --location --show-error --silent --connect-timeout 15 --max-time 180 --retry 2   --proto '=https' --proto-redir '=https' "$1" -o "$2"
+}
+verify_extract() {
+ python3 - "$1" "$2" "$3" "$4" <<'PY'
+import hashlib, pathlib, sys, tarfile
+archive, sums, asset, output = sys.argv[1:]
+matches = []
+for line in pathlib.Path(sums).read_text().splitlines():
+    fields = line.split()
+    if len(fields) == 2 and fields[1].lstrip("*") == asset:
+        matches.append(fields[0].lower())
+actual = hashlib.sha256(pathlib.Path(archive).read_bytes()).hexdigest()
+if len(matches) != 1 or matches[0] != actual:
+    raise SystemExit("SHA256 校验失败，未安装")
+with tarfile.open(archive, "r:gz") as tf:
+    members = [m for m in tf.getmembers() if m.name in ("go-reverse-proxy", "./go-reverse-proxy")]
+    if len(members) != 1 or not members[0].isfile() or not 0 < members[0].size < 100 * 1024 * 1024:
+        raise SystemExit("归档中的程序文件无效")
+    data = tf.extractfile(members[0]).read()
+    if not data.startswith(b"\x7fELF"):
+        raise SystemExit("不是 Linux ELF 程序")
+    pathlib.Path(output).write_bytes(data)
+PY
+}
+download_binary() {
+ local work=$1 version=$2 arch=$3
+ if [[ $version == latest ]]; then
+  fetch "https://api.github.com/repos/$REPO/releases/latest" "$work/release.json" || return 1
+  version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag_name"])' "$work/release.json") || return 1
+ fi
+ [[ $version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "版本格式应为 v1.2.0" >&2; return 1; }
+ local asset="go-reverse-proxy-$version-linux-$arch.tar.gz"
+ fetch "https://github.com/$REPO/releases/download/$version/$asset" "$work/$asset" || return 1
+ fetch "https://github.com/$REPO/releases/download/$version/SHA256SUMS.txt" "$work/SHA256SUMS.txt" || return 1
+ verify_extract "$work/$asset" "$work/SHA256SUMS.txt" "$asset" "$work/go-reverse-proxy" || return 1
+ printf '%s\n' "$version" > "$work/VERSION"
+}
+# Existing executable is replaced atomically; failure restores the previous executable.
+deploy_binary() {
+ local source=$1 restart=$2 had_old=false
+ install -d -m 755 "$APP_DIR"
+ if [[ -f "$APP_DIR/fango" ]]; then
+  cp -p "$APP_DIR/fango" "$APP_DIR/fango.previous" || return 1
+  had_old=true
+ fi
+ install -m 755 "$source/go-reverse-proxy" "$APP_DIR/fango.new" || return 1
+ mv -f "$APP_DIR/fango.new" "$APP_DIR/fango" || return 1
+ if [[ $restart == true ]]; then
+  if systemctl restart "$SERVICE" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
+   :
+  else
+   echo "服务启动检查失败，正在回滚。" >&2
+   if [[ $had_old == true ]]; then
+    cp -p "$APP_DIR/fango.previous" "$APP_DIR/fango.rollback" || return 1
+    mv -f "$APP_DIR/fango.rollback" "$APP_DIR/fango" || return 1
+    systemctl restart "$SERVICE" || true
+   else
+    systemctl stop "$SERVICE" || true
+   fi
+   return 1
+  fi
+ fi
+ install -m 644 "$source/VERSION" "$APP_DIR/VERSION"
+}
+upgrade() (
+ need_root || exit 1
+ exec 9>/run/lock/fango-update.lock
+ flock -n 9 || { echo "另一个安装或升级正在运行。"; exit 1; }
+ local work arch
+ arch=$(architecture) || exit 1
+ work=$(mktemp -d)
+ trap 'rm -rf -- "$work"' EXIT
+ echo "下载并校验发行包；下载失败不会替换现有程序。"
+ download_binary "$work" "${1:-latest}" "$arch" || exit 1
+ deploy_binary "$work" true || exit 1
+ echo "升级完成：$(cat "$APP_DIR/VERSION")。已确认进程运行，源站连通性请另行检查。"
+)
+offline_upgrade() (
+ need_root || exit 1
+ [[ $# -eq 3 && $1 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "用法：fango offline-upgrade v1.2.0 归档 校验文件"; exit 1; }
+ exec 9>/run/lock/fango-update.lock
+ flock -n 9 || { echo "另一个升级正在运行。"; exit 1; }
+ local work arch
+ work=$(mktemp -d)
+ trap 'rm -rf -- "$work"' EXIT
+ arch=$(architecture)
+ verify_extract "$2" "$3" "go-reverse-proxy-$1-linux-$arch.tar.gz" "$work/go-reverse-proxy" || exit 1
+ printf '%s\n' "$1" > "$work/VERSION"
+ deploy_binary "$work" true
+ echo "离线升级完成。"
+)
+edit_config() {
+ local backup
+ backup=$(mktemp)
+ cp "$ENV_FILE" "$backup"
+ if ! nano "$ENV_FILE"; then rm -f "$backup"; return 1; fi
+ if systemctl restart "$SERVICE" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
+  rm -f "$backup"; echo "配置已生效。"
+ else
+  echo "配置应用失败，恢复原配置。"
+  cp "$backup" "$ENV_FILE"; rm -f "$backup"
+  systemctl restart "$SERVICE" || true
+  return 1
+ fi
+}
+# Atomically update only UPSTREAM; preserve permissions and all unrelated settings.
+write_upstream() {
+ python3 - "$ENV_FILE" "$1" <<'PY'
+import os,pathlib,re,stat,sys,tempfile,urllib.parse
+p=pathlib.Path(sys.argv[1]); value=sys.argv[2]
+u=urllib.parse.urlsplit(value)
+if not re.fullmatch(r"https?://[A-Za-z0-9./:_?=%@+\-]+",value) or not u.hostname or u.username or u.password:
+    raise SystemExit("回源地址无效，需为不含凭据的 http(s) 地址")
+lines=p.read_text().splitlines()
+out=[]; found=False
+for line in lines:
+    if line.lstrip().startswith("UPSTREAM="):
+        if not found: out.append("UPSTREAM="+value); found=True
+    else: out.append(line)
+if not found: out.append("UPSTREAM="+value)
+mode=stat.S_IMODE(p.stat().st_mode)
+fd,name=tempfile.mkstemp(prefix=p.name+".new.",dir=p.parent)
+try:
+    with os.fdopen(fd,"w") as f:
+        f.write("\n".join(out)+"\n")
+        f.flush(); os.fsync(f.fileno())
+    os.chmod(name,mode)
+    os.replace(name,p)
+finally:
+    if os.path.exists(name): os.unlink(name)
+PY
+}
+apply_upstream() {
+ local backup
+ backup=$(mktemp "${ENV_FILE}.backup.XXXXXX") || return 1
+ cp -p "$ENV_FILE" "$backup" || return 1
+ if ! write_upstream "$1"; then rm -f "$backup"; return 1; fi
+ if systemctl restart "$SERVICE" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
+  echo "回源已更新为 $1；旧配置备份：$backup"
+ else
+  cp -p "$backup" "$ENV_FILE"
+  systemctl restart "$SERVICE" || true
+  echo "配置应用失败，已恢复原配置。" >&2
+  return 1
+ fi
+}
+set_upstream() (
+ need_root || exit 1
+ [[ $# -eq 1 && -f "$ENV_FILE" ]] || { echo "用法：fango set-upstream https://api10.seox9.com/"; exit 1; }
+ exec 9>/run/lock/fango-update.lock
+ flock -n 9 || { echo "另一个安装或升级正在运行。"; exit 1; }
+ apply_upstream "$1"
+)
+uninstall_proxy() (
+ need_root || exit 1
+ local yes=false purge=false answer
+ for arg in "$@"; do
+  case "$arg" in --yes) yes=true;; --purge-config) purge=true;; *) echo "用法：fango uninstall [--yes] [--purge-config]"; exit 1;; esac
+ done
+ echo "将停止并卸载 Fango 服务、程序和管理命令；保留 Caddy、网站配置、证书、系统日志及配置备份。"
+ if [[ $purge == false ]]; then echo "保留 $ENV_FILE。"; else echo "同时删除 $ENV_FILE。"; fi
+ if [[ $yes != true ]]; then
+  read -r -p "确认卸载请输入 UNINSTALL: " answer || exit 1
+  [[ $answer == UNINSTALL ]] || { echo "已取消。"; exit 1; }
+ fi
+ exec 9>/run/lock/fango-update.lock
+ flock -n 9 || { echo "另一个安装或升级正在运行。"; exit 1; }
+ uninstall_files "$purge"
+)
+uninstall_files() {
+ local purge=$1 state executable
+ state=$(systemctl show "$SERVICE" --property=LoadState --value) || return 1
+ if [[ $state != not-found ]]; then
+  executable=$(systemctl show "$SERVICE" --property=ExecStart --value) || return 1
+  [[ $executable == *"$APP_DIR/fango"* ]] || { echo "服务使用不同程序路径，拒绝删除。"; return 1; }
+  systemctl stop "$SERVICE" || return 1
+  systemctl disable "$SERVICE" || return 1
+ fi
+ if [[ -L "$LEGACY_MANAGER_FILE" && $(readlink "$LEGACY_MANAGER_FILE") == "$MANAGER_FILE" ]]; then
+  rm -f -- "$LEGACY_MANAGER_FILE" || return 1
+ fi
+ rm -f -- "$UNIT_FILE" || return 1
+ systemctl daemon-reload || return 1
+ systemctl reset-failed "$SERVICE" 2>/dev/null || true
+ # Remove only known owned files, never recursively delete the directory.
+ rm -f -- "$APP_DIR/fango" "$APP_DIR/fango.previous" "$APP_DIR/fango.new" "$APP_DIR/fango.rollback" "$APP_DIR/VERSION" "$MANAGER_FILE" || return 1
+ rmdir "$APP_DIR" 2>/dev/null || true
+ if [[ $purge == true ]]; then rm -f -- "$ENV_FILE" || return 1; fi
+ echo "Go 代理已卸载。Caddy 站点仍保留，继续访问可能返回 502；如不再使用，请单独移除对应站点并验证、重载 Caddy。"
+}
+
+menu() {
+ need_root
+ while true; do
+  printf '\nFango 反代管理\n1) 状态/版本\n2) 实时访问与错误日志\n3) 最近错误日志\n4) 重启代理\n5) 启动并设置开机启动\n6) 停止代理\n7) 修改配置并应用\n8) 在线升级最新版\n9) Caddy/证书日志\n10) 修改回源地址\n11) 卸载 Go 代理\n0) 退出\n'
+  local choice
+  read -r -p "请输入数字: " choice || break
+  case "$choice" in
+   1) systemctl --no-pager --full status "$SERVICE" || true; cat "$APP_DIR/VERSION" 2>/dev/null || true ;;
+   2) (trap 'exit 0' INT; journalctl -u "$SERVICE" -f -n 50) || true ;;
+   3) journalctl -u "$SERVICE" --since "1 hour ago" --no-pager | grep -Ei 'upstream request failed|error|timeout|status=[45][0-9]{2}|must be|invalid' || true ;;
+   4) systemctl restart "$SERVICE" && systemctl is-active "$SERVICE" || true ;;
+   5) systemctl enable --now "$SERVICE" || true ;;
+   6) systemctl stop "$SERVICE" || true ;;
+   7) edit_config || true ;;
+   8) upgrade || true ;;
+   9) journalctl -u caddy -n 100 --no-pager || true ;;
+   10) local upstream; read -r -p "新回源地址: " upstream; set_upstream "$upstream" || true ;;
+   11) if uninstall_proxy; then break; fi ;;
+   0) break ;;
+   *) echo "请输入 0 到 11。" ;;
+  esac
+ done
+}
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+ case "${1:-menu}" in
+  menu) menu ;;
+  set-upstream) shift; set_upstream "$@" ;;
+  uninstall) shift; uninstall_proxy "$@" ;;
+  offline-upgrade) shift; offline_upgrade "$@" ;;
+  upgrade) upgrade "${2:-latest}" ;;
+  *) echo "用法：fango [menu|upgrade [v1.2.0]|offline-upgrade VERSION ARCHIVE CHECKSUMS|set-upstream URL|uninstall [--yes] [--purge-config]]" >&2; exit 1 ;;
+ esac
+fi
