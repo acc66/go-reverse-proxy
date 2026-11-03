@@ -1,5 +1,8 @@
 # Go Reverse Proxy
 
+首次部署请阅读 [完整安装教程](docs/installation.md)：Docker、Linux/Windows/macOS 二进制、HTTPS 自动续期、自定义缓存及更新排障。
+
+
 基于 Go 标准库的单上游反向代理，支持 HTTP/HTTPS 上游、WebSocket 升级、流式响应、路径和查询参数转发、优雅退出。无第三方 Go 依赖。
 
 ## Docker
