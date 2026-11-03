@@ -45,3 +45,7 @@ API、后台、用户路径，带 Cookie、Authorization、Range、条件请求�
 静态文件更新请使用版本化文件名；需要立即清空缓存可 docker restart seo-proxy。
 更新部署：git pull，docker build -t go-reverse-proxy:local .，然后删除旧容器并使用原 docker run 参数重新创建。
 缓存只改善重复静态请求，不解决登录接口的回源超时。公开缓存资源应由源站明确标记，不能只凭文件后缀判断公开性。
+
+## HTTPS 与自动续期
+参阅 [HTTPS 部署教程](docs/https-deployment.md)，包括域名解析、从原容器迁移、Caddy 自动续期、缓存策略和故障排查。
+仓库提供 compose.https.yaml、Caddyfile 与 .env.https.example。HTTP 和 HTTPS 两套 Compose 配置应独立使用。
