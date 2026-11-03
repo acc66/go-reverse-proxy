@@ -1,0 +1,12 @@
+services:
+  proxy:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      UPSTREAM: ${UPSTREAM:?Set UPSTREAM in .env}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
