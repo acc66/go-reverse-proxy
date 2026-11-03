@@ -27,7 +27,7 @@ func proxyHandler(raw string) (http.Handler, error) {
 			r.Out.Host = target.Host
 			r.SetXForwarded()
 		},
-		Transport: transport,
+		Transport: newAssetCache(transport),
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.Printf("upstream request failed: %v", err)
 			http.Error(w, "Bad Gateway", http.StatusBadGateway)

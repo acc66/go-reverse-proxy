@@ -34,3 +34,14 @@ GitHub Actions 会执行 race 测试、静态检查及 Docker 构建。
 本服务监听 HTTP；对公网提供 HTTPS 时请在前面配置 TLS 网关。
 不会改写 HTML 内绝对链接、Location 或 Cookie Domain。依赖固定域名、登录回调的网站通常需要额外配置，不能保证任意网站直接兼容。
 无内置身份认证，请按实际需求限制访问。环境配置中的敏感值不要提交到仓库。
+
+## 静态资源内存缓存
+自动启用，进程重启清空。缓存条目预算 64 MiB（计入内容、键与响应头，进程总内存会更高），单文件最多 2 MiB，采用最早写入淘汰；并发首次请求可能分别回源。
+只缓存 GET 的公开 CSS、JS、常见图片和字体。源站必须明确返回 Cache-Control: public, max-age=3600（或其他正数时长），代理缓存上限 1 小时，并扣除已有 Age。
+没有明确 public 和有效时长则不缓存。尊重 private/no-store/no-cache，拒绝缓存带 Set-Cookie、Vary、Content-Range、声明的 trailers 的响应以及非 200 状态。
+API、后台、用户路径，带 Cookie、Authorization、Range、条件请求头、Cache-Control 或 Pragma 的请求均绕过缓存；HEAD/POST 等不缓存。
+查询字符串和 Accept-Encoding 分别计入缓存键。不缓存 HTML、SVG 或私有文件。
+响应头 X-Proxy-Cache: HIT 表示命中，MISS 表示候选静态请求回源（不一定已存储），BYPASS 表示绕过。
+静态文件更新请使用版本化文件名；需要立即清空缓存可 docker restart seo-proxy。
+更新部署：git pull，docker build -t go-reverse-proxy:local .，然后删除旧容器并使用原 docker run 参数重新创建。
+缓存只改善重复静态请求，不解决登录接口的回源超时。公开缓存资源应由源站明确标记，不能只凭文件后缀判断公开性。
