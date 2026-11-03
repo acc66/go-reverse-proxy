@@ -55,7 +55,7 @@ func staticRequest(r *http.Request, excludedPaths ...string) bool {
 
 // Only explicitly public responses with a finite freshness lifetime are shared.
 func assetTTL(h http.Header) time.Duration {
-	if len(h.Values("Set-Cookie")) > 0 || h.Get("Vary") != "" || h.Get("Content-Range") != "" {
+	if len(h.Values("Set-Cookie")) > 0 || !cacheableVary(h) || h.Get("Content-Range") != "" {
 		return 0
 	}
 	public := false
@@ -216,4 +216,17 @@ func parseExcludedPaths(raw string) ([]string, error) {
 		}
 	}
 	return result, nil
+}
+
+// The key already includes Accept-Encoding. All other variants remain uncacheable.
+func cacheableVary(h http.Header) bool {
+	for _, line := range h.Values("Vary") {
+		for _, field := range strings.Split(line, ",") {
+			field = strings.TrimSpace(field)
+			if field != "" && !strings.EqualFold(field, "Accept-Encoding") {
+				return false
+			}
+		}
+	}
+	return true
 }

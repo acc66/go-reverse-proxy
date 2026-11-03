@@ -41,7 +41,7 @@ GitHub Actions 会执行 race 测试、静态检查及 Docker 构建。
 ## 静态资源内存缓存
 自动启用，进程重启清空。缓存条目预算 64 MiB（计入内容、键与响应头，进程总内存会更高），单文件最多 2 MiB，采用最早写入淘汰；并发首次请求可能分别回源。
 只缓存 GET 的公开 CSS、JS、常见图片和字体。源站必须明确返回 Cache-Control: public, max-age=3600（或其他正数时长），代理缓存上限 1 小时，并扣除已有 Age。
-没有明确 public 和有效时长则不缓存。尊重 private/no-store/no-cache，拒绝缓存带 Set-Cookie、Vary、Content-Range、声明的 trailers 的响应以及非 200 状态。
+没有明确 public 和有效时长则不缓存。尊重 private/no-store/no-cache，拒绝缓存带 Set-Cookie、非 Accept-Encoding 的 Vary、Content-Range、声明的 trailers 的响应以及非 200 状态。
 API、后台、用户路径，带 Cookie、Authorization、Range、条件请求头、Cache-Control 或 Pragma 的请求均绕过缓存；HEAD/POST 等不缓存。
 查询字符串和 Accept-Encoding 分别计入缓存键。不缓存 HTML、SVG 或私有文件。
 响应头 X-Proxy-Cache: HIT 表示命中，MISS 表示候选静态请求回源（不一定已存储），BYPASS 表示绕过。
@@ -92,3 +92,6 @@ docker run 用户在创建容器时添加 -e "CACHE_BYPASS_PATHS=/auth,/payment,
 
 ## 预编译下载
 在 [GitHub Releases](https://github.com/acc66/go-reverse-proxy/releases) 下载 Linux、Windows、macOS 的 amd64/arm64 版本，见 [二进制安装教程](docs/binary-install.md)。
+
+## 回源超时与日志
+支持 UPSTREAM_CONNECT_TIMEOUT（默认 30s）、UPSTREAM_TLS_TIMEOUT（10s）、UPSTREAM_HEADER_TIMEOUT（30s）以及 ACCESS_LOG（默认 false）。见 [配置与错误日志教程](docs/timeouts-and-logs.md)。Compose 已配置每容器约 3 × 10 MiB 日志轮转。

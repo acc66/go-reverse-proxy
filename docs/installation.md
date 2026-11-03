@@ -117,7 +117,7 @@ curl -sS -D - -o /dev/null https://你的域名/实际静态文件.js
 ```
 
 连续 GET 相同公开静态文件，第二次有机会返回 X-Proxy-Cache: HIT。
-源站必须返回 public 和有效缓存时长；Cookie、Vary、Set-Cookie 等会阻止缓存。
+源站必须返回 public 和有效缓存时长；Cookie、非 Accept-Encoding 的 Vary、Set-Cookie 等会阻止缓存。
 MISS 不保证已存储，BYPASS 表示绕过。不要用 HEAD 检查 GET 缓存。
 
 ### A9. 更新、停止和清缓存
@@ -245,3 +245,6 @@ Caddy 配置和证书数据保留。Go 重启后内存缓存会清空。
 - 交叉编译不代表每种 CPU 都实际运行测试；请查 Release 的验证范围。
 
 更多说明：[HTTPS](https-deployment.md) · [缓存设置](cache-settings.md) · [二进制快速安装](binary-install.md)
+
+## 回源超时与错误日志
+参阅 [回源超时与日志教程](timeouts-and-logs.md)，可设置连接、TLS、响应头等待时间，以及查看、筛选和导出错误日志。

@@ -23,8 +23,10 @@ func proxyHandler(raw string) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.ResponseHeaderTimeout = 30 * time.Second
+	transport, err := upstreamTransport()
+	if err != nil {
+		return nil, err
+	}
 	cache := newAssetCache(transport)
 	cache.excludedPaths = excludedPaths
 	proxy := &httputil.ReverseProxy{
@@ -35,11 +37,11 @@ func proxyHandler(raw string) (http.Handler, error) {
 		},
 		Transport: cache,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			log.Printf("upstream request failed: %v", err)
+			log.Printf("upstream request failed method=%s upstream=%s error=%v", r.Method, target.Host, err)
 			http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		},
 	}
-	return proxy, nil
+	return accessLogging(proxy)
 }
 
 func main() {

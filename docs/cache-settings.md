@@ -151,7 +151,7 @@ BYPASS 也可能由 Cookie 等其他条件触发，因此同时检查容器中�
 | BYPASS | 本次绕过 Go 缓存 |
 
 想验证正常缓存，选一个未排除的公开静态资源，连续 GET 两次。
-源站必须返回 public 和有效 max-age/s-maxage，文件不超过 2 MiB，且没有其他绕过条件；当前任何 Vary 响应也不缓存。
+源站必须返回 public 和有效 max-age/s-maxage，文件不超过 2 MiB，且没有其他绕过条件；仅 Vary: Accept-Encoding 可缓存，其他 Vary 响应不缓存。
 
 ## 六、常见问题
 

@@ -6,7 +6,16 @@ services:
     environment:
       UPSTREAM: ${UPSTREAM:?Set UPSTREAM in .env}
       CACHE_BYPASS_PATHS: "${CACHE_BYPASS_PATHS:-}"
+      ACCESS_LOG: "${ACCESS_LOG:-false}"
+      UPSTREAM_CONNECT_TIMEOUT: "${UPSTREAM_CONNECT_TIMEOUT:-30s}"
+      UPSTREAM_TLS_TIMEOUT: "${UPSTREAM_TLS_TIMEOUT:-10s}"
+      UPSTREAM_HEADER_TIMEOUT: "${UPSTREAM_HEADER_TIMEOUT:-30s}"
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     read_only: true
     cap_drop: [ALL]
     security_opt:
