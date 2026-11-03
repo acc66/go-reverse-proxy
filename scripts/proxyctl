@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Linux/systemd manager. Sourceable for installation and tests.
+set -Eeuo pipefail
+SERVICE=go-reverse-proxy
+APP_DIR=/opt/go-reverse-proxy
+ENV_FILE=/etc/go-reverse-proxy.env
+REPO=acc66/go-reverse-proxy
+DEFAULT_BYPASS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user
+
+need_root() { [[ $EUID -eq 0 ]] || { echo "请使用 sudo bash $0" >&2; return 1; }; }
+architecture() {
+ case "$(uname -m)" in
+  x86_64) echo amd64 ;;
+  aarch64|arm64) echo arm64 ;;
+  *) echo "仅支持 Linux amd64/arm64" >&2; return 1 ;;
+ esac
+}
+fetch() {
+ curl --fail --location --show-error --silent --connect-timeout 15 --max-time 180 --retry 2   --proto '=https' --proto-redir '=https' "$1" -o "$2"
+}
+verify_extract() {
+ python3 - "$1" "$2" "$3" "$4" <<'PY'
+import hashlib, pathlib, sys, tarfile
+archive, sums, asset, output = sys.argv[1:]
+matches = []
+for line in pathlib.Path(sums).read_text().splitlines():
+    fields = line.split()
+    if len(fields) == 2 and fields[1].lstrip("*") == asset:
+        matches.append(fields[0].lower())
+actual = hashlib.sha256(pathlib.Path(archive).read_bytes()).hexdigest()
+if len(matches) != 1 or matches[0] != actual:
+    raise SystemExit("SHA256 校验失败，未安装")
+with tarfile.open(archive, "r:gz") as tf:
+    members = [m for m in tf.getmembers() if m.name in ("go-reverse-proxy", "./go-reverse-proxy")]
+    if len(members) != 1 or not members[0].isfile() or not 0 < members[0].size < 100 * 1024 * 1024:
+        raise SystemExit("归档中的程序文件无效")
+    data = tf.extractfile(members[0]).read()
+    if not data.startswith(b"\x7fELF"):
+        raise SystemExit("不是 Linux ELF 程序")
+    pathlib.Path(output).write_bytes(data)
+PY
+}
+download_binary() {
+ local work=$1 version=$2 arch=$3
+ if [[ $version == latest ]]; then
+  fetch "https://api.github.com/repos/$REPO/releases/latest" "$work/release.json" || return 1
+  version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag_name"])' "$work/release.json") || return 1
+ fi
+ [[ $version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "版本格式应为 v1.2.0" >&2; return 1; }
+ local asset="go-reverse-proxy-$version-linux-$arch.tar.gz"
+ fetch "https://github.com/$REPO/releases/download/$version/$asset" "$work/$asset" || return 1
+ fetch "https://github.com/$REPO/releases/download/$version/SHA256SUMS.txt" "$work/SHA256SUMS.txt" || return 1
+ verify_extract "$work/$asset" "$work/SHA256SUMS.txt" "$asset" "$work/go-reverse-proxy" || return 1
+ printf '%s\n' "$version" > "$work/VERSION"
+}
+# Existing executable is replaced atomically; failure restores the previous executable.
+deploy_binary() {
+ local source=$1 restart=$2 had_old=false
+ install -d -m 755 "$APP_DIR"
+ if [[ -f "$APP_DIR/go-reverse-proxy" ]]; then
+  cp -p "$APP_DIR/go-reverse-proxy" "$APP_DIR/go-reverse-proxy.previous" || return 1
+  had_old=true
+ fi
+ install -m 755 "$source/go-reverse-proxy" "$APP_DIR/go-reverse-proxy.new" || return 1
+ mv -f "$APP_DIR/go-reverse-proxy.new" "$APP_DIR/go-reverse-proxy" || return 1
+ if [[ $restart == true ]]; then
+  if systemctl restart "$SERVICE" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
+   :
+  else
+   echo "服务启动检查失败，正在回滚。" >&2
+   if [[ $had_old == true ]]; then
+    cp -p "$APP_DIR/go-reverse-proxy.previous" "$APP_DIR/go-reverse-proxy.rollback" || return 1
+    mv -f "$APP_DIR/go-reverse-proxy.rollback" "$APP_DIR/go-reverse-proxy" || return 1
+    systemctl restart "$SERVICE" || true
+   else
+    systemctl stop "$SERVICE" || true
+   fi
+   return 1
+  fi
+ fi
+ install -m 644 "$source/VERSION" "$APP_DIR/VERSION"
+}
+upgrade() (
+ need_root || exit 1
+ exec 9>/run/lock/go-reverse-proxy-update.lock
+ flock -n 9 || { echo "另一个安装或升级正在运行。"; exit 1; }
+ local work arch
+ arch=$(architecture) || exit 1
+ work=$(mktemp -d)
+ trap 'rm -rf -- "$work"' EXIT
+ echo "下载并校验发行包；下载失败不会替换现有程序。"
+ download_binary "$work" "${1:-latest}" "$arch" || exit 1
+ deploy_binary "$work" true || exit 1
+ echo "升级完成：$(cat "$APP_DIR/VERSION")。已确认进程运行，源站连通性请另行检查。"
+)
+offline_upgrade() (
+ need_root || exit 1
+ [[ $# -eq 3 && $1 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "用法：proxyctl offline-upgrade v1.2.0 归档 校验文件"; exit 1; }
+ exec 9>/run/lock/go-reverse-proxy-update.lock
+ flock -n 9 || { echo "另一个升级正在运行。"; exit 1; }
+ local work arch
+ work=$(mktemp -d)
+ trap 'rm -rf -- "$work"' EXIT
+ arch=$(architecture)
+ verify_extract "$2" "$3" "go-reverse-proxy-$1-linux-$arch.tar.gz" "$work/go-reverse-proxy" || exit 1
+ printf '%s\n' "$1" > "$work/VERSION"
+ deploy_binary "$work" true
+ echo "离线升级完成。"
+)
+edit_config() {
+ local backup
+ backup=$(mktemp)
+ cp "$ENV_FILE" "$backup"
+ if ! nano "$ENV_FILE"; then rm -f "$backup"; return 1; fi
+ if systemctl restart "$SERVICE" && sleep 2 && systemctl is-active --quiet "$SERVICE"; then
+  rm -f "$backup"; echo "配置已生效。"
+ else
+  echo "配置应用失败，恢复原配置。"
+  cp "$backup" "$ENV_FILE"; rm -f "$backup"
+  systemctl restart "$SERVICE" || true
+  return 1
+ fi
+}
+menu() {
+ need_root
+ while true; do
+  printf '\nGo 反代管理\n1) 状态/版本\n2) 实时访问与错误日志\n3) 最近错误日志\n4) 重启代理\n5) 启动并设置开机启动\n6) 停止代理\n7) 修改配置并应用\n8) 在线升级最新版\n9) Caddy/证书日志\n0) 退出\n'
+  local choice
+  read -r -p "请输入数字: " choice || break
+  case "$choice" in
+   1) systemctl --no-pager --full status "$SERVICE" || true; cat "$APP_DIR/VERSION" 2>/dev/null || true ;;
+   2) (trap 'exit 0' INT; journalctl -u "$SERVICE" -f -n 50) || true ;;
+   3) journalctl -u "$SERVICE" --since "1 hour ago" --no-pager | grep -Ei 'upstream request failed|error|timeout|status=[45][0-9]{2}|must be|invalid' || true ;;
+   4) systemctl restart "$SERVICE" && systemctl is-active "$SERVICE" || true ;;
+   5) systemctl enable --now "$SERVICE" || true ;;
+   6) systemctl stop "$SERVICE" || true ;;
+   7) edit_config || true ;;
+   8) upgrade || true ;;
+   9) journalctl -u caddy -n 100 --no-pager || true ;;
+   0) break ;;
+   *) echo "请输入 0 到 9。" ;;
+  esac
+ done
+}
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+ case "${1:-menu}" in
+  menu) menu ;;
+  offline-upgrade) shift; offline_upgrade "$@" ;;
+  upgrade) upgrade "${2:-latest}" ;;
+  *) echo "用法：proxyctl [menu|upgrade [v1.2.0]|offline-upgrade VERSION ARCHIVE CHECKSUMS]" >&2; exit 1 ;;
+ esac
+fi
