@@ -37,18 +37,24 @@ func (w *accessWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 func accessLogging(handler http.Handler) (http.Handler, error) {
-	raw := strings.TrimSpace(os.Getenv("ACCESS_LOG"))
-	if raw == "" {
-		return handler, nil
-	}
-	enabled, err := strconv.ParseBool(raw)
+	trusted, err := trustedProxyRanges(os.Getenv("TRUSTED_PROXIES"))
 	if err != nil {
-		return nil, fmt.Errorf("ACCESS_LOG must be true or false")
+		return nil, err
 	}
-	if !enabled {
-		return handler, nil
+	raw := strings.TrimSpace(os.Getenv("ACCESS_LOG"))
+	enabled := false
+	if raw != "" {
+		enabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			return nil, fmt.Errorf("ACCESS_LOG must be true or false")
+		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = withClientIP(r, trusted)
+		if !enabled {
+			handler.ServeHTTP(w, r)
+			return
+		}
 		start := time.Now()
 		out := &accessWriter{ResponseWriter: w}
 		defer func() {
@@ -56,7 +62,7 @@ func accessLogging(handler http.Handler) (http.Handler, error) {
 			if status == 0 {
 				status = http.StatusOK
 			}
-			log.Printf("access method=%s status=%d duration_ms=%d bytes=%d cache=%s", r.Method, status, time.Since(start).Milliseconds(), out.bytes, out.Header().Get("X-Proxy-Cache"))
+			log.Printf("access ip=%s method=%s status=%d duration_ms=%d bytes=%d cache=%s", clientIP(r), r.Method, status, time.Since(start).Milliseconds(), out.bytes, out.Header().Get("X-Proxy-Cache"))
 		}()
 		handler.ServeHTTP(out, r)
 	}), nil

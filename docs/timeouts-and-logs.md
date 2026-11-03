@@ -163,3 +163,21 @@ Go 自身回源错误仍返回 502。错误之后不要盲目重试登录、支�
 静态缓存只能减少可缓存文件的重复回源，不能解决登录超时。
 
 新版一键安装器默认使用 fango 服务与 /etc/fango.env，日志命令用 journalctl -u fango。本文早期手动安装示例的 go-reverse-proxy 名称仅适用于未迁移的旧部署。迁移、更新回源及卸载请见 [管理教程](manager.md)。
+
+## 客户端 IP（v1.3.0 起）
+
+访问和回源错误日志新增 ip=，默认记录 TCP 连接方的 IP。
+同机原生 Caddy 部署可在 /etc/fango.env 配置：
+
+```dotenv
+ACCESS_LOG=true
+TRUSTED_PROXIES=127.0.0.1/32,::1/128
+```
+
+修改后 systemctl restart fango。只有来自明确可信代理的连接才解析 X-Forwarded-For，按链条从右向左取首个不可信节点，防止直接访客伪造头部。
+IP/CIDR 用逗号分隔；格式无效时拒绝启动。留空则不信任任何代理。
+字段不会写入 Cookie、Authorization、URL 或请求正文。
+ACCESS_LOG=false 时回源错误日志仍包含 IP。
+Docker 场景需填写真实代理来源，不要盲目把整个公网或不受控网段设为可信。
+公网 CDN 前置时还需在 Caddy 端配置 CDN 信任边界。
+详见 [国内服务器离线安装及 IP 日志](china-offline-install.md)。

@@ -37,7 +37,7 @@ func proxyHandler(raw string) (http.Handler, error) {
 		},
 		Transport: cache,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			log.Printf("upstream request failed method=%s upstream=%s error=%v", r.Method, target.Host, err)
+			log.Printf("upstream request failed ip=%s method=%s upstream=%s error=%v", clientIP(r), r.Method, target.Host, err)
 			http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		},
 	}

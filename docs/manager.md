@@ -198,3 +198,5 @@ fango uninstall --yes --purge-config
 不自动停止或卸载 Caddy，因为同机可能还有其他网站。
 ## 在线管理反代域名
 新增菜单 12 添加/更新域名、13 列表、14 删除。支持共用主实例或独立回源；见 [多域名教程](domains.md)。离线安装现在需同时准备 install.sh、fango、fango-sites.py 三个文件。
+
+国内服务器 GitHub 下载慢时，见 [下载服务器中转与离线安装](china-offline-install.md)，包含 SCP 上传和访客 IP 日志配置。

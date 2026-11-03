@@ -102,3 +102,6 @@ docker run 用户在创建容器时添加 -e "CACHE_BYPASS_PATHS=/auth,/payment,
 默认后台进程与 systemd 服务为 fango。支持 fango set-upstream https://api10.seox9.com/ 更新已有回源，fango uninstall 卸载；详见管理教程。
 ## 在线多域名
 支持 fango domain-add、domain-list、domain-remove：多个域名共用回源、独立回源及在线切换，详见 [多域名教程](docs/domains.md)。
+
+## 国内服务器安装与 IP 日志
+[另一台服务器下载、SCP 上传、离线安装教程](docs/china-offline-install.md)。v1.3.0 新增日志 ip= 字段，使用 TRUSTED_PROXIES 显式配置可信代理；原生同机 Caddy 可配置 127.0.0.1/32,::1/128。
