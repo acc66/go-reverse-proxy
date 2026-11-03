@@ -30,7 +30,7 @@ jobs:
           go-version: '1.27.x'
       - name: Syntax and failure-path tests
         run: |
-          bash -n scripts/fango scripts/install.sh scripts/test-manager.sh
+          for script in scripts/fango scripts/install.sh scripts/test-manager.sh; do bash -n "$script"; done
           bash scripts/test-manager.sh
       - name: Install and restart real systemd service using offline package
         run: |
@@ -42,19 +42,8 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           sudo mkdir -p /opt/go-reverse-proxy
           sudo cp /tmp/proxy-package/go-reverse-proxy /opt/go-reverse-proxy/go-reverse-proxy
-          printf 'UPSTREAM=http://127.0.0.1:1
-LISTEN_ADDR=127.0.0.1:8080
-CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user
-ACCESS_LOG=true
-' | sudo tee /etc/go-reverse-proxy.env >/dev/null
-          printf '[Unit]
-Description=Legacy proxy fixture
-[Service]
-EnvironmentFile=/etc/go-reverse-proxy.env
-ExecStart=/opt/go-reverse-proxy/go-reverse-proxy
-[Install]
-WantedBy=multi-user.target
-' | sudo tee /etc/systemd/system/go-reverse-proxy.service >/dev/null
+          printf '%s\n' 'UPSTREAM=http://127.0.0.1:1' 'LISTEN_ADDR=127.0.0.1:8080' 'CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user' 'ACCESS_LOG=true' | sudo tee /etc/go-reverse-proxy.env >/dev/null
+          printf '%s\n' '[Unit]' 'Description=Legacy proxy fixture' '[Service]' 'EnvironmentFile=/etc/go-reverse-proxy.env' 'ExecStart=/opt/go-reverse-proxy/go-reverse-proxy' '[Install]' 'WantedBy=multi-user.target' | sudo tee /etc/systemd/system/go-reverse-proxy.service >/dev/null
           sudo systemctl daemon-reload
           sudo systemctl enable --now go-reverse-proxy
           sudo bash scripts/install.sh --no-https --upstream http://127.0.0.1:1 --version v1.2.0 --archive /tmp/go-reverse-proxy-v1.2.0-linux-amd64.tar.gz --checksums /tmp/proxy-SHA256SUMS.txt
