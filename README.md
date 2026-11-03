@@ -86,3 +86,6 @@ docker compose -f compose.https.yaml up -d
 不要仅使用 docker restart：它不会读取新的 .env。应用配置会重建代理容器并清空其内存缓存。
 docker run 用户在创建容器时添加 -e "CACHE_BYPASS_PATHS=/auth,/payment,/res"，修改时需重建容器。
 响应头 X-Proxy-Cache: BYPASS 可用于确认请求已绕过本代理缓存。
+
+## 预编译下载
+在 [GitHub Releases](https://github.com/acc66/go-reverse-proxy/releases) 下载 Linux、Windows、macOS 的 amd64/arm64 版本，见 [二进制安装教程](docs/binary-install.md)。
