@@ -20,7 +20,7 @@ Windows PowerShell：Get-FileHash 文件名 -Algorithm SHA256。
 
 ```bash
 chmod +x go-reverse-proxy
-export UPSTREAM=https://seo.webshost.club/
+export UPSTREAM=https://api10.seox9.com/
 export LISTEN_ADDR=:8080
 export CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink
 ./go-reverse-proxy
@@ -31,7 +31,7 @@ export CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink
 解压 zip 后进入目录：
 
 ```powershell
-$env:UPSTREAM="https://seo.webshost.club/"
+$env:UPSTREAM="https://api10.seox9.com/"
 $env:LISTEN_ADDR=":8080"
 $env:CACHE_BYPASS_PATHS="/auth,/password,/payment,/res,/v1,/sublink"
 .\go-reverse-proxy.exe

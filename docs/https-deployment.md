@@ -1,7 +1,7 @@
 # HTTPS 反代部署与证书自动续期
 
 适用于已有 Docker Engine、Docker Compose 插件和 Git 的 Linux 服务器。
-示例：用户访问 https://aaaa.com，回源 https://seo.webshost.club/。
+示例：用户访问 https://aaaa.com，回源 https://api10.seox9.com/。
 aaaa.com 是示例，请替换为你拥有且能管理 DNS 的真实域名。
 
 访问路径：浏览器 → Caddy（HTTPS）→ Go（内网 HTTP、静态缓存）→ 源站（HTTPS）。
@@ -33,7 +33,7 @@ nano .env
 
 ```dotenv
 DOMAIN=aaaa.com
-UPSTREAM=https://seo.webshost.club/
+UPSTREAM=https://api10.seox9.com/
 ```
 
 DOMAIN 只填写域名，不加 https:// 或路径。UPSTREAM 需要完整 http(s) 地址。

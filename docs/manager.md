@@ -13,7 +13,7 @@ mkdir -p /root/proxy-installer
 cd /root/proxy-installer
 curl -fL --retry 2 https://raw.githubusercontent.com/acc66/go-reverse-proxy/main/scripts/install.sh -o install.sh &&
 curl -fL --retry 2 https://raw.githubusercontent.com/acc66/go-reverse-proxy/main/scripts/proxyctl -o proxyctl &&
-bash install.sh   --domain wp.xn--8prw66b70hsx0c.com   --upstream https://jiangsu.webshost.club/
+bash install.sh   --domain wp.xn--8prw66b70hsx0c.com   --upstream https://api10.seox9.com/
 ```
 
 请替换为你自己的域名和源站。域名 A 记录应指向本机，TCP 80/443 放行。
@@ -25,7 +25,7 @@ Caddy 自动申请和续期证书，真正签发成功需查看菜单 9 的日�
 新安装默认配置：
 
 ```dotenv
-UPSTREAM=https://jiangsu.webshost.club/
+UPSTREAM=https://api10.seox9.com/
 LISTEN_ADDR=127.0.0.1:8080
 CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user
 UPSTREAM_CONNECT_TIMEOUT=10s
@@ -90,7 +90,7 @@ CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/wordpress,/user
 
 ```bash
 cd /root/proxy-installer
-bash install.sh   --domain wp.xn--8prw66b70hsx0c.com   --upstream https://jiangsu.webshost.club/   --version v1.2.0   --archive ./go-reverse-proxy-v1.2.0-linux-amd64.tar.gz   --checksums ./SHA256SUMS.txt
+bash install.sh   --domain wp.xn--8prw66b70hsx0c.com   --upstream https://api10.seox9.com/   --version v1.2.0   --archive ./go-reverse-proxy-v1.2.0-linux-amd64.tar.gz   --checksums ./SHA256SUMS.txt
 ```
 
 离线方式不从 GitHub下载程序，但仍需要 apt 软件源安装依赖；HTTPS 仍需连通证书服务。

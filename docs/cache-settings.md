@@ -71,7 +71,7 @@ docker run -d \
   --name seo-proxy \
   --restart unless-stopped \
   -p 80:8080 \
-  -e UPSTREAM=https://seo.webshost.club/ \
+  -e UPSTREAM=https://api10.seox9.com/ \
   -e "CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink,/private" \
   --read-only \
   --cap-drop ALL \

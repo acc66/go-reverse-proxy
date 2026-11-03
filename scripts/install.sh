@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
  esac
 done
 if [[ ! -f "$ENV_FILE" && -z $UPSTREAM ]]; then
- read -r -p "请输入回源网址，例如 https://jiangsu.webshost.club/: " UPSTREAM
+ read -r -p "请输入回源网址，例如 https://api10.seox9.com/: " UPSTREAM
 fi
 if [[ $HTTPS == true ]]; then
  [[ -n $DOMAIN ]] || read -r -p "请输入访问域名，例如 wp.example.com: " DOMAIN

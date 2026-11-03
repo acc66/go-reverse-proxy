@@ -1,6 +1,6 @@
 # 完整安装教程
 
-目标：通过 https://你的域名 访问 https://seo.webshost.club/，缓存公开静态文件，API 和个人数据回源，并自动续期 HTTPS 证书。
+目标：通过 https://你的域名 访问 https://api10.seox9.com/，缓存公开静态文件，API 和个人数据回源，并自动续期 HTTPS 证书。
 示例 aaaa.com 必须替换为你拥有的域名。
 
 ## 选择安装方式
@@ -36,7 +36,7 @@ docker version 应能连接服务端；出现 permission denied 时使用有 Doc
 2. 无可用 IPv6 时不要配置 AAAA。
 3. 云安全组和服务器防火墙放行 TCP 80、443；HTTP/3 可额外放行 UDP 443。
 4. 确保其他服务未占用 80、443。不要直接停止不相关业务，应先安排端口迁移。
-5. 源站域名 seo.webshost.club 继续解析到源站，不能解析回本代理。
+5. 源站域名 api10.seox9.com 继续解析到源站，不能解析回本代理。
 6. 服务器需能出站访问源站、镜像仓库和证书签发服务。
 
 ### A3. 下载项目
@@ -54,7 +54,7 @@ nano .env
 
 ```dotenv
 DOMAIN=aaaa.com
-UPSTREAM=https://seo.webshost.club/
+UPSTREAM=https://api10.seox9.com/
 CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink
 ```
 
@@ -177,7 +177,7 @@ Linux：sha256sum 文件名。macOS：shasum -a 256 文件名。
 
 ```bash
 chmod +x go-reverse-proxy
-export UPSTREAM=https://seo.webshost.club/
+export UPSTREAM=https://api10.seox9.com/
 export LISTEN_ADDR=127.0.0.1:8080
 export CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink
 ./go-reverse-proxy
@@ -188,7 +188,7 @@ export CACHE_BYPASS_PATHS=/auth,/password,/payment,/res,/v1,/sublink
 进入解压目录：
 
 ```powershell
-$env:UPSTREAM="https://seo.webshost.club/"
+$env:UPSTREAM="https://api10.seox9.com/"
 $env:LISTEN_ADDR="127.0.0.1:8080"
 $env:CACHE_BYPASS_PATHS="/auth,/password,/payment,/res,/v1,/sublink"
 .\go-reverse-proxy.exe
